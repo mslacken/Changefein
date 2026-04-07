@@ -1,7 +1,11 @@
 from datasets import load_dataset
 from jinja2 import Template
+from transformers import AutoTokenizer
 
 MAX_LENGTH = 1024
+
+# Initialize the tokenizer
+tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
 
 # Jinja2 template for formatting the changelog entry
 CHANGELOG_TEMPLATE = (
@@ -20,20 +24,58 @@ template = Template(CHANGELOG_TEMPLATE)
 def preprocess_function(data):
     """
     Format the changelog for T5 input using Jinja2.
-    Assuming data is a batch (dict of lists) as typically passed to dataset.map(batched=True).
+    Ensures the output doesn't exceed MAX_LENGTH after tokenization.
+    Fields 'package', 'version', 'added_files', 'removed_files' stay intact.
+    Others ('archive_changelog', 'github_release_notes', 'spec_diff') are truncated if necessary.
     """
-    # Determine batch size from any available field in the data
     batch_size = len(next(iter(data.values())))
+    optional_keys = ['archive_changelog', 'github_release_notes', 'spec_diff']
     
     results = []
     for i in range(batch_size):
         # Extract fields for the current entry in the batch
         item = {field: data[field][i] for field in data if i < len(data[field]) and data[field][i]}
-        # Render the template and strip any surrounding whitespace
-        rendered_text = template.render(**item)
-        # Filter out empty lines
-        filtered_text = "\n".join(line for line in rendered_text.splitlines() if line.strip())
-        results.append(filtered_text)
+        
+        # Pre-tokenize the optional fields to allow truncation
+        tokenized_optional = {}
+        for k in optional_keys:
+            if k in item and item[k]:
+                tokenized_optional[k] = tokenizer.encode(item[k], add_special_tokens=False)
+
+        def get_rendered_text(L):
+            temp_item = dict(item)
+            for k in optional_keys:
+                if k in temp_item and temp_item[k]:
+                    # Truncate tokens and decode back to text
+                    truncated_tokens = tokenized_optional[k][:L]
+                    temp_item[k] = tokenizer.decode(truncated_tokens)
+            
+            rendered = template.render(**temp_item)
+            # Filter out empty lines
+            return "\n".join(line for line in rendered.splitlines() if line.strip())
+
+        # Check if full text fits without truncation
+        # Using a very large value for L effectively means no truncation here
+        # But for robustness, we use a reasonable upper bound
+        full_text = get_rendered_text(2**31) # Effectively infinity
+        if len(tokenizer.encode(full_text)) <= MAX_LENGTH:
+            results.append(full_text)
+            continue
+            
+        # Binary search for the optimal truncation length L for optional fields
+        low, high = 0, MAX_LENGTH
+        best_text = get_rendered_text(0)
+        
+        while low <= high:
+            mid = (low + high) // 2
+            current_text = get_rendered_text(mid)
+            if len(tokenizer.encode(current_text)) <= MAX_LENGTH:
+                best_text = current_text
+                low = mid + 1
+            else:
+                high = mid - 1
+                
+        results.append(best_text)
     
     return results
         
@@ -47,12 +89,13 @@ dataset_split = dataset.train_test_split(test_size=0.2, seed=42)
 dtrain, dtest = dataset_split['train'], dataset_split['test']
 
 # Print the first ten sets (items) from the training set formatted as intended
-first_ten_batch = dtrain.select(range(10)).to_dict()
+first_ten_batch = dtrain.select(range(min(10, len(dtrain)))).to_dict()
 formatted_strings = preprocess_function(first_ten_batch)
 
 print("First ten sets of formatted changelog strings:")
 print("=" * 60)
 for i, formatted_str in enumerate(formatted_strings, 1):
-    print(f"Set {i}:")
+    num_tokens = len(tokenizer.encode(formatted_str))
+    print(f"Set {i} ({num_tokens} tokens):")
     print(formatted_str)
     print("-" * 60)
