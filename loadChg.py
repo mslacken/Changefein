@@ -1,35 +1,39 @@
 from datasets import load_dataset
+from jinja2 import Template
 
 MAX_LENGTH = 1024
 
+# Jinja2 template for formatting the changelog entry
+CHANGELOG_TEMPLATE = (
+    '''{% if package %}create structured changelog for package {{ package }}{% endif %} {% if version %} {{ version }}{% endif %}:
+{% if archive_changelog %}changelog:
+{{ archive_changelog }}{% endif %}
+{% if github_release_notes %}release notes:
+{{ github_release_notes }}{% endif %}
+{% if added_files %}new files: {{ added_files }}{% endif %}
+{% if removed_files %}removed files: {{ removed_files }}{% endif %}
+{% if spec_diff %}changes in spec file:
+{{ spec_diff }}{% endif %}'''
+)
+template = Template(CHANGELOG_TEMPLATE)
+
 def preprocess_function(data):
     """
-    Format the changelog for T5 input.
+    Format the changelog for T5 input using Jinja2.
     Assuming data is a batch (dict of lists) as typically passed to dataset.map(batched=True).
     """
-    # Mapping of fields to their specific prefix/format
-    field_templates = {
-        'package': "create structured changelog for package {val} ",
-        'version': "{val}:\n",
-        'archive_changelog': "changelog {val}\n",
-        'github_release_notes': "github release notes {val}\n",
-        'added_files': "new files: {val}\n",
-        'removed_files': "removed files: {val}\n",
-        'spec_diff': "change in spec file: {val}\n"
-    }
-    
     # Determine batch size from any available field in the data
     batch_size = len(next(iter(data.values())))
     
     results = []
     for i in range(batch_size):
-        entry_parts = []
-        for field, template in field_templates.items():
-            if field in data:
-                val = data[field][i]
-                if val: # Only include if non-empty
-                    entry_parts.append(template.format(val=val).strip())
-        results.append("".join(entry_parts).strip())
+        # Extract fields for the current entry in the batch
+        item = {field: data[field][i] for field in data if i < len(data[field]) and data[field][i]}
+        # Render the template and strip any surrounding whitespace
+        rendered_text = template.render(**item)
+        # Filter out empty lines
+        filtered_text = "\n".join(line for line in rendered_text.splitlines() if line.strip())
+        results.append(filtered_text)
     
     return results
         
