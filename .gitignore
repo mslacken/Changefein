@@ -1,1 +1,3 @@
-./pyTorch
+/pyTorch
+/__pycache__
+changes.json
