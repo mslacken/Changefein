@@ -95,7 +95,6 @@ def main():
     # Training arguments
     training_args = TrainingArguments(
         output_dir=OUT_DIR,
-        overwrite_output_dir=True,
         num_train_epochs=EPOCHS,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
