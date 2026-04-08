@@ -1,3 +1,4 @@
+import argparse
 import torch
 import sys
 import os
@@ -5,17 +6,35 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from datasets import load_dataset
 from preprocess import preprocess_function
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Test a T5 model on changelog data")
+    parser.add_argument(
+        "--model", 
+        type=str, 
+        default="google-t5/t5-small",
+        help="The model ID or local path to use (default: google-t5/t5-small)"
+    )
+    parser.add_argument(
+        "--samples", 
+        "-n",
+        type=int, 
+        default=3,
+        help="Number of samples to test (default: 3)"
+    )
+    parser.add_argument(
+        "--seed", 
+        type=int, 
+        default=42,
+        help="Random seed for sample selection (default: 42)"
+    )
+    return parser.parse_args()
+
 def main():
-    # Configuration
-    # Usage: python test_t5.py [model_path_or_id] [n_samples]
+    args = parse_args()
     
-    MODEL_ID = sys.argv[1] if len(sys.argv) > 1 else "google-t5/t5-small"
-    
-    try:
-        n_samples = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-    except ValueError:
-        print("Invalid sample count. Please provide an integer as the second argument.")
-        sys.exit(1)
+    MODEL_ID = args.model
+    n_samples = args.samples
+    seed = args.seed
 
     print(f"Loading model and tokenizer from: {MODEL_ID}...")
     
@@ -40,10 +59,10 @@ def main():
     dataset = load_dataset('json', data_files="changes.json")['train']
     
     # We use a seed for reproducibility when testing
-    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.shuffle(seed=seed)
     samples = dataset.select(range(min(n_samples, len(dataset)))).to_dict()
 
-    print(f"Preprocessing {n_samples} samples...")
+    print(f"Preprocessing {n_samples} samples (Seed: {seed})...")
     # Preprocess samples
     preprocessed_texts = preprocess_function(samples)
 

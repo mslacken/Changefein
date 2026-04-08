@@ -5,6 +5,8 @@ MAX_LENGTH = 1024
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+# Add newline as a token so it is not replaced by space during tokenization
+tokenizer.add_tokens(['\n'])
 
 # Jinja2 template for formatting the changelog entry
 CHANGELOG_TEMPLATE = (
@@ -76,4 +78,34 @@ def preprocess_function(data):
                 
         results.append(best_text)
     
+    return results
+
+def preprocess_target_function(data):
+    """
+    Preprocess the target output in the field 'changes_diff'.
+    Removes the leading '+' sign from diff lines.
+    New lines are preserved so they can be explicitly tokenized.
+    """
+    batch_size = len(next(iter(data.values())))
+    results = []
+    
+    for i in range(batch_size):
+        diff = data.get('changes_diff', [])[i]
+        if not diff:
+            results.append("")
+            continue
+            
+        processed_lines = []
+        for line in diff.split("\n"):
+            if line.startswith("+"):
+                # Remove the leading + sign, keep the rest
+                # (if there's a space after +, we might want to keep it or remove it,
+                # but 'Remove the leading + sign' implies just the plus)
+                processed_lines.append(line[1:])
+            else:
+                processed_lines.append(line)
+                
+        # Join with newline character
+        results.append("\n".join(processed_lines))
+        
     return results
