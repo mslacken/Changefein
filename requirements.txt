@@ -1,4 +1,6 @@
 torch
+# For ROCm support, install torch with the appropriate index, e.g.:
+# pip install torch --index-url https://download.pytorch.org/whl/rocm6.0
 transformers
 datasets
 tensorboard

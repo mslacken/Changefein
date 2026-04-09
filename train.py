@@ -46,6 +46,12 @@ def parse_args():
         default=None,
         help="Output directory for the fine-tuned model (default: ./results_t5_finetune_<model_name>)"
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="Device to use for training (e.g., 'cuda', 'cpu', 'cuda:0', 'mps'). If not specified, will use CUDA/ROCm if available."
+    )
     return parser.parse_args()
 
 def main():
@@ -55,8 +61,15 @@ def main():
     model_name = model_id.split('/')[-1]
     out_dir = args.out_dir or f'./results_{model_name}_finetune'
     
+    # Device selection
+    if args.device:
+        device = args.device
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    
     print(f"Using model: {model_id}")
     print(f"Output directory: {out_dir}")
+    print(f"Using device: {device}")
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -128,9 +141,8 @@ def main():
     # Resize model embeddings to account for the new '\n' token
     model.resize_token_embeddings(len(tokenizer))
     
-    # Use GPU if available
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    # Move model to device
+    print(f"Moving model to device: {device}")
     model.to(device)
 
     # Training arguments
@@ -150,7 +162,7 @@ def main():
         save_total_limit=2,
         report_to='none',
         learning_rate=1e-4,
-        fp16=torch.cuda.is_available(), # Use FP16 if GPU is available
+        fp16=device.startswith("cuda"), # Use FP16 if using CUDA/ROCm
         dataloader_num_workers=2
     )
  
