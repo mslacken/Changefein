@@ -60,8 +60,6 @@ def main():
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    # Add newline as a token so it is not replaced by space during tokenization
-    tokenizer.add_tokens(['\n'])
 
     def preprocess_data(examples):
         """

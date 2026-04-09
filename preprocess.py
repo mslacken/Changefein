@@ -5,12 +5,13 @@ MAX_LENGTH = 1024
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
-# Add newline as a token so it is not replaced by space during tokenization
-tokenizer.add_tokens(['\n'])
+# Add newline as a special token so it is not replaced by space during tokenization
+# Using additional_special_tokens prevents the tokenizer from incorrectly mapping spaces to newlines
+tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
 
 # Jinja2 template for formatting the changelog entry
 CHANGELOG_TEMPLATE = (
-    '''{% if package %}create structured changelog for package {{ package }}{% endif %} {% if version %} {{ version }}{% endif %}:
+'''{% if package %}create structured changelog for package {{ package }}{% endif %}{% if version %} {{ version }}{% endif %}:
 {% if archive_changelog %}changelog:
 {{ archive_changelog }}{% endif %}
 {% if github_release_notes %}release notes:
@@ -49,10 +50,10 @@ def preprocess_function(data):
                 if k in temp_item and temp_item[k]:
                     # Truncate tokens and decode back to text
                     truncated_tokens = tokenized_optional[k][:L]
-                    temp_item[k] = tokenizer.decode(truncated_tokens)
+                    temp_item[k] = tokenizer.decode(truncated_tokens, skip_special_tokens=False)
             
             rendered = template.render(**temp_item)
-            # Filter out empty lines
+            # Filter out empty lines to save tokens
             return "\n".join(line for line in rendered.splitlines() if line.strip())
 
         # Check if full text fits without truncation
@@ -98,12 +99,8 @@ def preprocess_target_function(data):
         processed_lines = []
         for line in diff.split("\n"):
             if line.startswith("+"):
-                # Remove the leading + sign, keep the rest
-                # (if there's a space after +, we might want to keep it or remove it,
-                # but 'Remove the leading + sign' implies just the plus)
+                # Remove the leading + sign as it was a diff, ignore the rest of lines
                 processed_lines.append(line[1:])
-            else:
-                processed_lines.append(line)
                 
         # Join with newline character
         results.append("\n".join(processed_lines))

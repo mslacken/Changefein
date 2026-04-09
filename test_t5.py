@@ -66,29 +66,41 @@ def main():
     # Preprocess samples
     preprocessed_texts = preprocess_function(samples)
 
-    print(f"\nTesting with model: {MODEL_ID}")
-    print("=" * 60)
+    print("=" * 80)
 
-    for i, text in enumerate(preprocessed_texts):
-        print(f"\n--- Sample {i+1} ---")
-        print(f"Input text (truncated): {text[:200]}...")
+    for i in range(len(preprocessed_texts)):
+        input_str = preprocessed_texts[i]
+        target_str = samples['changes_diff'][i]
         
-        # Tokenize input
-        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=1024).to(device)
+        # Tokenize input and target for stats
+        input_tokens = tokenizer.encode(input_str)
+        target_tokens = tokenizer.encode(target_str)
+        
+        print(f"Example {i+1}:")
+        print(f"  Input Tokens: {len(input_tokens)}")
+        print(f"  Target Tokens: {len(target_tokens)}")
+        print("-" * 40)
+        
+        # Prepare model input
+        inputs = tokenizer(input_str, return_tensors="pt", truncation=True, max_length=1024).to(device)
         
         # Generate output
         with torch.no_grad():
             output = model.generate(inputs.input_ids, max_new_tokens=512)
         
-        # Decode and print output
+        # Decode output
         decoded_output = tokenizer.decode(output[0], skip_special_tokens=True)
+        generated_tokens = tokenizer.encode(decoded_output)
         
-        print(f"\nTarget (Expected):")
-        print(samples['changes_diff'][i])
-        
-        print(f"\nGenerated Output:")
+        print("INPUT (Formatted):")
+        print(input_str)
+        print("-" * 20)
+        print("TARGET (Expected):")
+        print(target_str)
+        print("-" * 20)
+        print(f"GENERATED OUTPUT ({len(generated_tokens)} tokens):")
         print(decoded_output)
-        print("-" * 60)
+        print("=" * 80)
 
 if __name__ == "__main__":
     main()
