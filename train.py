@@ -73,6 +73,7 @@ def main():
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
 
     def preprocess_data(examples):
         """
@@ -86,7 +87,8 @@ def main():
             inputs,
             max_length=MAX_INPUT_LENGTH,
             truncation=True,
-            padding='max_length'
+            padding='max_length',
+            add_special_tokens=True
         )
      
         # Preprocess and tokenize targets (changes_diff)
@@ -95,7 +97,8 @@ def main():
             text_target=targets,
             max_length=MAX_TARGET_LENGTH,
             truncation=True,
-            padding='max_length'
+            padding='max_length',
+            add_special_tokens=True
         )
      
         # Replace padding token id with -100 so loss calculation ignores padding
@@ -103,7 +106,6 @@ def main():
             [(l if l != tokenizer.pad_token_id else -100) for l in label] 
             for label in labels["input_ids"]
         ]
-        
         return model_inputs
 
     # Load dataset from changes.json
@@ -161,8 +163,8 @@ def main():
         load_best_model_at_end=True,
         save_total_limit=2,
         report_to='none',
-        learning_rate=1e-4,
-        fp16=device.startswith("cuda"), # Use FP16 if using CUDA/ROCm
+        learning_rate=1e-5,
+        fp16=False,
         dataloader_num_workers=2
     )
  

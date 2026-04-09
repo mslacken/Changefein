@@ -3,18 +3,13 @@ from transformers import AutoTokenizer
 
 MAX_LENGTH = 1024
 
-# Initialize the tokenizer
-tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
-# Add newline as a special token so it is not replaced by space during tokenization
-# Using additional_special_tokens prevents the tokenizer from incorrectly mapping spaces to newlines
-tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
 
 # Jinja2 template for formatting the changelog entry
 CHANGELOG_TEMPLATE = (
 '''{% if package %}create structured changelog for package {{ package }}{% endif %}{% if version %} {{ version }}{% endif %}:
 {% if archive_changelog %}changelog:
 {{ archive_changelog }}{% endif %}
-{% if github_release_notes %}release notes:
+{% if github_release_notes %}github release notes:
 {{ github_release_notes }}{% endif %}
 {% if added_files %}new files: {{ added_files }}{% endif %}
 {% if removed_files %}removed files: {{ removed_files }}{% endif %}
