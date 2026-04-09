@@ -2,15 +2,20 @@ import os
 import json
 import argparse
 from datasets import load_dataset
-from preprocess import preprocess_function, preprocess_target_function, tokenizer, MAX_LENGTH
+from transformers import AutoTokenizer
+from preprocess import preprocess_function, preprocess_target_function, MAX_LENGTH
 
-def test_preprocessing(seed=42):
+def test_preprocessing(model_id="google-t5/t5-small", seed=42):
     # Define the data file
     data_file = "changes.json"
     
     if not os.path.exists(data_file):
         print(f"Error: {data_file} not found. Please ensure the dataset exists.")
         return
+
+    print(f"Loading tokenizer: {model_id}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
 
     print(f"Loading dataset from {data_file}...")
     # Load the dataset from json
@@ -24,7 +29,7 @@ def test_preprocessing(seed=42):
     print(f"Dataset keys: {list(dataset.features.keys())}")
 
     # Split into train and test
-    dataset_split = dataset.train_test_split(test_size=0.2, seed=42)
+    dataset_split = dataset.train_test_split(test_size=0.1, seed=42)
     dtrain = dataset_split['train']
 
     # Test a random selection of ten sets (items) from the training set
@@ -34,7 +39,7 @@ def test_preprocessing(seed=42):
     batch = dtrain.shuffle(seed=seed).select(range(num_to_test)).to_dict()
     
     # Process inputs
-    formatted_inputs = preprocess_function(batch)
+    formatted_inputs = preprocess_function(batch, tokenizer)
     # Process targets
     formatted_targets = preprocess_target_function(batch)
 
@@ -48,7 +53,7 @@ def test_preprocessing(seed=42):
         
         print(f"Example {i+1}:")
         print(f"  Input Tokens: {len(input_tokens)} (Max: {MAX_LENGTH})")
-        print(f"  Target Tokens: {len(target_tokens)}")
+        print(f"  Target Tokens: {len(target_tokens)} (Max: 512)")
         print("-" * 40)
         print("INPUT (Formatted):")
         print(input_str)
@@ -63,7 +68,8 @@ def test_preprocessing(seed=42):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test preprocessing on a random subset of the dataset.")
+    parser.add_argument("--model", type=str, default="google-t5/t5-small", help="Model ID for tokenizer.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for random selection.")
     args = parser.parse_args()
     
-    test_preprocessing(seed=args.seed)
+    test_preprocessing(model_id=args.model, seed=args.seed)

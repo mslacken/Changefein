@@ -4,7 +4,7 @@ import sys
 import os
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from datasets import load_dataset
-from preprocess import preprocess_function
+from preprocess import preprocess_function, preprocess_target_function
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Test a T5 model on changelog data")
@@ -38,16 +38,17 @@ def main():
 
     print(f"Loading model and tokenizer from: {MODEL_ID}...")
     
-    # Check if path exists locally
-    if os.path.isdir(MODEL_ID):
-        print(f"Loading local model from {MODEL_ID}")
-    
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
+    
     model = AutoModelForSeq2SeqLM.from_pretrained(
         MODEL_ID,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         device_map="auto" if torch.cuda.is_available() else None
     )
+    
+    # Resize model embeddings to account for the new '\n' token
+    model.resize_token_embeddings(len(tokenizer))
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
@@ -64,13 +65,15 @@ def main():
 
     print(f"Preprocessing {n_samples} samples (Seed: {seed})...")
     # Preprocess samples
-    preprocessed_texts = preprocess_function(samples)
+    preprocessed_texts = preprocess_function(samples, tokenizer)
+    # Preprocess targets
+    preprocessed_targets = preprocess_target_function(samples)
 
     print("=" * 80)
 
     for i in range(len(preprocessed_texts)):
         input_str = preprocessed_texts[i]
-        target_str = samples['changes_diff'][i]
+        target_str = preprocessed_targets[i]
         
         # Tokenize input and target for stats
         input_tokens = tokenizer.encode(input_str)
@@ -95,7 +98,7 @@ def main():
         print("INPUT (Formatted):")
         print(input_str)
         print("-" * 20)
-        print("TARGET (Expected):")
+        print("TARGET (Processed):")
         print(target_str)
         print("-" * 20)
         print(f"GENERATED OUTPUT ({len(generated_tokens)} tokens):")

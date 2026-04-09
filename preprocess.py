@@ -18,7 +18,7 @@ CHANGELOG_TEMPLATE = (
 )
 template = Template(CHANGELOG_TEMPLATE)
 
-def preprocess_function(data):
+def preprocess_function(data, tokenizer):
     """
     Format the changelog for T5 input using Jinja2.
     Ensures the output doesn't exceed MAX_LENGTH after tokenization.
@@ -80,7 +80,7 @@ def preprocess_target_function(data):
     """
     Preprocess the target output in the field 'changes_diff'.
     Removes the leading '+' sign from diff lines.
-    New lines are preserved so they can be explicitly tokenized.
+    New lines are preserved so they can be explicitly tokenized, but empty lines are filtered out.
     """
     batch_size = len(next(iter(data.values())))
     results = []
@@ -95,7 +95,9 @@ def preprocess_target_function(data):
         for line in diff.split("\n"):
             if line.startswith("+"):
                 # Remove the leading + sign as it was a diff, ignore the rest of lines
-                processed_lines.append(line[1:])
+                content = line[1:]
+                if content.strip():
+                    processed_lines.append(content)
                 
         # Join with newline character
         results.append("\n".join(processed_lines))

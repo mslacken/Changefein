@@ -80,7 +80,7 @@ def main():
         Tokenize the formatted inputs and the formatted targets.
         """
         # format_inputs returns a list of formatted strings for the model input
-        inputs = format_inputs(examples)
+        inputs = format_inputs(examples, tokenizer)
         
         # Tokenize inputs
         model_inputs = tokenizer(
