@@ -1,11 +1,13 @@
 import argparse
 import torch
 import os
+import evaluate
+import numpy as np
 from transformers import (
     T5ForConditionalGeneration,
     AutoTokenizer,
-    TrainingArguments,
-    Trainer,
+    Seq2SeqTrainingArguments,
+    Seq2SeqTrainer,
     DataCollatorForSeq2Seq
 )
 from datasets import load_dataset
@@ -148,7 +150,7 @@ def main():
     model.to(device)
 
     # Training arguments
-    training_args = TrainingArguments(
+    training_args = Seq2SeqTrainingArguments(
         output_dir=out_dir,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
@@ -165,20 +167,44 @@ def main():
         report_to='none',
         learning_rate=1e-5,
         fp16=False,
-        dataloader_num_workers=2
+        dataloader_num_workers=2,
+        predict_with_generate=True,
+        generation_max_length=MAX_TARGET_LENGTH
     )
  
     # Data collator for padding
     data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
+    # Load the rouge metric
+    metric = evaluate.load("rouge")
+
+    def compute_metrics(eval_preds):
+        preds, labels = eval_preds
+        if isinstance(preds, tuple):
+            preds = preds[0]
+        
+        # Decode predictions and labels
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        
+        # Replace -100 in labels (used for padding/ignored tokens) with pad_token_id
+        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+
+        # Compute ROUGE scores
+        result = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+        
+        # Scale by 100 for readability and round
+        return {k: round(v * 100, 4) for k, v in result.items()}
+
     # Initialize Trainer
-    trainer = Trainer(
+    trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_train,
         eval_dataset=tokenized_valid,
         data_collator=data_collator,
         processing_class=tokenizer,
+        compute_metrics=compute_metrics,
     )
 
     # Train
