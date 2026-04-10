@@ -14,6 +14,10 @@ CHANGELOG_TEMPLATE = (
 {{ github_release_notes }}{% endif %}
 {% if added_files %}new files: {{ added_files }}{% endif %}
 {% if removed_files %}removed files: {{ removed_files }}{% endif %}
+{% if _service %}changes in _service:
+{{ _service }}{% endif %}
+{% if _multibuild %}changes in _multibuild:
+{{ _multibuild }}{% endif %}
 {% if spec_diff %}changes in spec file:
 {{ spec_diff }}{% endif %}'''
 )
@@ -24,10 +28,10 @@ def preprocess_function(data, tokenizer, max_length=512):
     Format the changelog for T5 input using Jinja2.
     Ensures the output doesn't exceed max_length after tokenization.
     Fields 'package', 'version', 'added_files', 'removed_files' stay intact.
-    Others ('archive_changelog', 'github_release_notes', 'spec_diff') are truncated if necessary.
+    Others ('archive_changelog', 'github_release_notes', 'spec_diff', '_service', '_multibuild') are truncated if necessary.
     """
     batch_size = len(next(iter(data.values())))
-    optional_keys = ['archive_changelog', 'github_release_notes', 'spec_diff']
+    optional_keys = ['archive_changelog', 'github_release_notes', '_service', '_multibuild', 'spec_diff']
     
     results = []
     for i in range(batch_size):
@@ -43,6 +47,7 @@ def preprocess_function(data, tokenizer, max_length=512):
                 else:
                     del item[file_key]
         
+        has_version_update = False
         if 'spec_diff' in item:
             spec_diff = item['spec_diff']
             # Extract old and new versions from spec_diff
@@ -53,13 +58,24 @@ def preprocess_function(data, tokenizer, max_length=512):
             if new_v_match:
                 item['new_version'] = new_v_match.group(1).strip()
             
+            if old_v_match and new_v_match:
+                has_version_update = True
+
             # Filter spec_diff to only show added and removed lines, excluding Version lines
             item['spec_diff'] = "\n".join([
                 line for line in spec_diff.splitlines() 
                 if (line.startswith('+') or line.startswith('-')) 
                 and not line.startswith('+Version:') 
                 and not line.startswith('-Version:')
+                and 'Copyright' not in line
             ])
+
+        # If no version update is detected, don't print the changelog changes and github release notes
+        if not has_version_update:
+            if 'archive_changelog' in item:
+                del item['archive_changelog']
+            if 'github_release_notes' in item:
+                del item['github_release_notes']
 
         # Pre-tokenize the optional fields to allow truncation
         tokenized_optional = {}
