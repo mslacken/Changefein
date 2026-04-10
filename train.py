@@ -6,7 +6,8 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForSeq2Seq
+    DataCollatorForSeq2Seq,
+    EarlyStoppingCallback
 )
 from datasets import load_dataset
 from preprocess import preprocess_function as format_inputs
@@ -16,7 +17,7 @@ from preprocess import preprocess_target_function as format_targets
 DEFAULT_MODEL_ID = 'google-t5/t5-small'
 BATCH_SIZE = 8
 NUM_PROCS = 4
-EPOCHS = 10
+EPOCHS = 50
 MAX_INPUT_LENGTH = 512
 MAX_TARGET_LENGTH = 512
 
@@ -181,6 +182,7 @@ def main():
         eval_dataset=tokenized_valid,
         data_collator=data_collator,
         processing_class=tokenizer,
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)]
     )
 
     # Train
