@@ -6,6 +6,3 @@ datasets
 tensorboard
 sentencepiece
 accelerate
-evaluate
-rouge_score
-absl-py
