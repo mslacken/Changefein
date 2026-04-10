@@ -15,10 +15,11 @@ from preprocess import preprocess_target_function as format_targets
 
 # Default Configuration
 DEFAULT_MODEL_ID = 'google-t5/t5-small'
-BATCH_SIZE = 8
+BATCH_SIZE = 4
+GRADIENT_ACCUMULATION_STEPS = 4 # Effective batch size = BATCH_SIZE * GRAD_ACC
 NUM_PROCS = 4
 EPOCHS = 50
-MAX_INPUT_LENGTH = 512
+MAX_INPUT_LENGTH = 1024
 MAX_TARGET_LENGTH = 512
 
 def parse_args():
@@ -39,19 +40,25 @@ def parse_args():
         "--batch_size", 
         type=int, 
         default=BATCH_SIZE,
-        help=f"Batch size for training and evaluation (default: {BATCH_SIZE})"
+        help=f"Batch size per device (default: {BATCH_SIZE})"
+    )
+    parser.add_argument(
+        "--grad_acc",
+        type=int,
+        default=GRADIENT_ACCUMULATION_STEPS,
+        help=f"Gradient accumulation steps (default: {GRADIENT_ACCUMULATION_STEPS})"
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=1e-4,
+        help="Learning rate (default: 1e-4)"
     )
     parser.add_argument(
         "--out_dir", 
         type=str, 
         default=None,
-        help="Output directory for the fine-tuned model (default: ./results_t5_finetune_<model_name>)"
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default=None,
-        help="Device to use for training (e.g., 'cuda', 'cpu', 'cuda:0', 'mps'). If not specified, will use CUDA/ROCm if available."
+        help="Output directory for the fine-tuned model"
     )
     parser.add_argument(
         "--max_input_length",
@@ -65,6 +72,12 @@ def parse_args():
         default=MAX_TARGET_LENGTH,
         help=f"Maximum length for target sequences (default: {MAX_TARGET_LENGTH})"
     )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        default=torch.cuda.is_available(),
+        help="Use FP16 mixed precision training (default: True if CUDA is available)"
+    )
     return parser.parse_args()
 
 def main():
@@ -74,30 +87,19 @@ def main():
     model_name = model_id.split('/')[-1]
     out_dir = args.out_dir or f'./results_{model_name}_finetune'
     
-    # Device selection
-    if args.device:
-        device = args.device
-    else:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    
     print(f"Using model: {model_id}")
     print(f"Output directory: {out_dir}")
-    print(f"Using device: {device}")
     print(f"Max input length: {args.max_input_length}")
     print(f"Max target length: {args.max_target_length}")
+    print(f"Effective Batch Size: {args.batch_size * args.grad_acc}")
+    print(f"Mixed Precision (FP16): {args.fp16}")
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     tokenizer.add_special_tokens({'additional_special_tokens': ['\n']})
 
     def preprocess_data(examples):
-        """
-        Tokenize the formatted inputs and the formatted targets.
-        """
-        # format_inputs returns a list of formatted strings for the model input
         inputs = format_inputs(examples, tokenizer, max_length=args.max_input_length)
-        
-        # Tokenize inputs
         model_inputs = tokenizer(
             inputs,
             max_length=args.max_input_length,
@@ -105,8 +107,6 @@ def main():
             padding='max_length',
             add_special_tokens=True
         )
-     
-        # Preprocess and tokenize targets (changes_diff)
         targets = format_targets(examples)
         labels = tokenizer(
             text_target=targets,
@@ -115,55 +115,26 @@ def main():
             padding='max_length',
             add_special_tokens=True
         )
-     
-        # Replace padding token id with -100 so loss calculation ignores padding
         model_inputs["labels"] = [
             [(l if l != tokenizer.pad_token_id else -100) for l in label] 
             for label in labels["input_ids"]
         ]
         return model_inputs
 
-    # Load dataset from changes.json
-    print("Loading dataset from changes.json...")
-    if not os.path.exists("changes.json"):
-        print("Error: changes.json not found.")
-        return
-
+    # Load dataset
     dataset = load_dataset('json', data_files="changes.json")['train']
-    
-    # Split dataset into train and validation (90/10 split)
-    print("Splitting dataset...")
     dataset_split = dataset.train_test_split(test_size=0.1, seed=42)
-    train_dataset = dataset_split['train']
-    valid_dataset = dataset_split['test']
-
-    # Preprocess datasets
-    print("Preprocessing datasets...")
-    tokenized_train = train_dataset.map(
-        preprocess_data,
-        batched=True,
-        num_proc=NUM_PROCS,
-        remove_columns=train_dataset.column_names
+    
+    tokenized_train = dataset_split['train'].map(
+        preprocess_data, batched=True, num_proc=NUM_PROCS, remove_columns=dataset.column_names
     )
-    tokenized_valid = valid_dataset.map(
-        preprocess_data,
-        batched=True,
-        num_proc=NUM_PROCS,
-        remove_columns=valid_dataset.column_names
+    tokenized_valid = dataset_split['test'].map(
+        preprocess_data, batched=True, num_proc=NUM_PROCS, remove_columns=dataset.column_names
     )
 
     # Load model
-    print(f"Loading model {model_id}...")
     model = T5ForConditionalGeneration.from_pretrained(model_id)
-    # Resize model embeddings to account for the new '\n' token
     model.resize_token_embeddings(len(tokenizer))
-    
-    # Move model to device
-    print(f"Moving model to device: {device}")
-    model.to(device)
-
-    # Set TensorBoard logging directory to avoid deprecation warning
-    os.environ["TENSORBOARD_LOGGING_DIR"] = os.path.join(out_dir, 'logs')
 
     # Training arguments
     training_args = TrainingArguments(
@@ -171,8 +142,11 @@ def main():
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_acc,
+        learning_rate=args.lr,
         warmup_ratio=0.1,
         weight_decay=0.01,
+        lr_scheduler_type='cosine',
         logging_steps=10,
         eval_strategy='steps',
         save_steps=100,
@@ -180,34 +154,25 @@ def main():
         load_best_model_at_end=True,
         save_total_limit=2,
         report_to='tensorboard',
-        learning_rate=1e-4,
-        fp16=False,
+        fp16=args.fp16,
+        optim="adafactor",
         dataloader_num_workers=2
     )
  
-    # Data collator for padding
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
-
-    # Initialize Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_train,
         eval_dataset=tokenized_valid,
-        data_collator=data_collator,
+        data_collator=DataCollatorForSeq2Seq(tokenizer, model=model),
         processing_class=tokenizer,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)]
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=10)] # More patience for large models
     )
 
-    # Train
     print("Starting training...")
     trainer.train()
-
-    # Save the final model and tokenizer
-    print(f"Saving fine-tuned model to {out_dir}...")
     trainer.save_model(out_dir)
     tokenizer.save_pretrained(out_dir)
-    print("Done!")
 
 if __name__ == "__main__":
     main()
