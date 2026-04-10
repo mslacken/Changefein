@@ -53,6 +53,18 @@ def parse_args():
         default=None,
         help="Device to use for training (e.g., 'cuda', 'cpu', 'cuda:0', 'mps'). If not specified, will use CUDA/ROCm if available."
     )
+    parser.add_argument(
+        "--max_input_length",
+        type=int,
+        default=MAX_INPUT_LENGTH,
+        help=f"Maximum length for input sequences (default: {MAX_INPUT_LENGTH})"
+    )
+    parser.add_argument(
+        "--max_target_length",
+        type=int,
+        default=MAX_TARGET_LENGTH,
+        help=f"Maximum length for target sequences (default: {MAX_TARGET_LENGTH})"
+    )
     return parser.parse_args()
 
 def main():
@@ -71,6 +83,8 @@ def main():
     print(f"Using model: {model_id}")
     print(f"Output directory: {out_dir}")
     print(f"Using device: {device}")
+    print(f"Max input length: {args.max_input_length}")
+    print(f"Max target length: {args.max_target_length}")
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -81,12 +95,12 @@ def main():
         Tokenize the formatted inputs and the formatted targets.
         """
         # format_inputs returns a list of formatted strings for the model input
-        inputs = format_inputs(examples, tokenizer, max_length=MAX_INPUT_LENGTH)
+        inputs = format_inputs(examples, tokenizer, max_length=args.max_input_length)
         
         # Tokenize inputs
         model_inputs = tokenizer(
             inputs,
-            max_length=MAX_INPUT_LENGTH,
+            max_length=args.max_input_length,
             truncation=True,
             padding='max_length',
             add_special_tokens=True
@@ -96,7 +110,7 @@ def main():
         targets = format_targets(examples)
         labels = tokenizer(
             text_target=targets,
-            max_length=MAX_TARGET_LENGTH,
+            max_length=args.max_target_length,
             truncation=True,
             padding='max_length',
             add_special_tokens=True

@@ -1,3 +1,4 @@
+import re
 from jinja2 import Template
 from transformers import AutoTokenizer
 
@@ -6,7 +7,7 @@ MAX_LENGTH = 1024
 
 # Jinja2 template for formatting the changelog entry
 CHANGELOG_TEMPLATE = (
-'''{% if package %}create structured changelog for package {{ package }}{% endif %}{% if version %} {{ version }}{% endif %}:
+'''{% if package %}create structured changelog for package {{ package }}{% endif %}{% if old_version %} from {{ old_version }}{% endif %}{% if new_version %} to {{ new_version }}{% elif version %} {{ version }}{% endif %}:
 {% if archive_changelog %}changelog:
 {{ archive_changelog }}{% endif %}
 {% if github_release_notes %}github release notes:
@@ -33,6 +34,33 @@ def preprocess_function(data, tokenizer, max_length=512):
         # Extract fields for the current entry in the batch
         item = {field: data[field][i] for field in data if i < len(data[field]) and data[field][i]}
         
+        # Filter out .sig files from file lists
+        for file_key in ['added_files', 'removed_files', 'changed_files']:
+            if file_key in item and isinstance(item[file_key], list):
+                filtered_files = [f for f in item[file_key] if not f.endswith('.sig')]
+                if filtered_files:
+                    item[file_key] = filtered_files
+                else:
+                    del item[file_key]
+        
+        if 'spec_diff' in item:
+            spec_diff = item['spec_diff']
+            # Extract old and new versions from spec_diff
+            old_v_match = re.search(r'^-Version:\s*(.*)', spec_diff, re.MULTILINE)
+            new_v_match = re.search(r'^\+Version:\s*(.*)', spec_diff, re.MULTILINE)
+            if old_v_match:
+                item['old_version'] = old_v_match.group(1).strip()
+            if new_v_match:
+                item['new_version'] = new_v_match.group(1).strip()
+            
+            # Filter spec_diff to only show added and removed lines, excluding Version lines
+            item['spec_diff'] = "\n".join([
+                line for line in spec_diff.splitlines() 
+                if (line.startswith('+') or line.startswith('-')) 
+                and not line.startswith('+Version:') 
+                and not line.startswith('-Version:')
+            ])
+
         # Pre-tokenize the optional fields to allow truncation
         tokenized_optional = {}
         for k in optional_keys:
