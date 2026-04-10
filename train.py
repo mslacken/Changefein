@@ -73,10 +73,9 @@ def parse_args():
         help=f"Maximum length for target sequences (default: {MAX_TARGET_LENGTH})"
     )
     parser.add_argument(
-        "--fp16",
+        "--disable_fp16",
         action="store_true",
-        default=torch.cuda.is_available(),
-        help="Use FP16 mixed precision training (default: True if CUDA is available)"
+        help="Disable FP16 mixed precision training even if CUDA is available"
     )
     return parser.parse_args()
 
@@ -87,12 +86,15 @@ def main():
     model_name = model_id.split('/')[-1]
     out_dir = args.out_dir or f'./results_{model_name}_finetune'
     
+    # Determine if FP16 should be used
+    use_fp16 = torch.cuda.is_available() and not args.disable_fp16
+
     print(f"Using model: {model_id}")
     print(f"Output directory: {out_dir}")
     print(f"Max input length: {args.max_input_length}")
     print(f"Max target length: {args.max_target_length}")
     print(f"Effective Batch Size: {args.batch_size * args.grad_acc}")
-    print(f"Mixed Precision (FP16): {args.fp16}")
+    print(f"Mixed Precision (FP16): {use_fp16}")
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -154,7 +156,7 @@ def main():
         load_best_model_at_end=True,
         save_total_limit=2,
         report_to='tensorboard',
-        fp16=args.fp16,
+        fp16=use_fp16,
         optim="adafactor",
         dataloader_num_workers=2
     )
