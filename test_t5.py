@@ -112,7 +112,13 @@ def main():
         
         # Generate output
         with torch.no_grad():
-            output = model.generate(inputs.input_ids, max_new_tokens=512)
+            output = model.generate(
+                inputs.input_ids, 
+                max_new_tokens=512,
+                repetition_penalty=2.5,     # Discourage repetition
+                no_repeat_ngram_size=3,     # Prevent 3-word repeating phrases
+                early_stopping=True         # Stop at EOS
+            )
         
         # Decode output
         # To keep the newlines (which are special tokens), we decode without skipping special tokens

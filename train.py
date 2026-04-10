@@ -125,6 +125,18 @@ def main():
 
     # Load dataset
     dataset = load_dataset('json', data_files="changes.json")['train']
+    
+    # Filter out examples where the target is too long.
+    # This ensures the model always learns an EOS token for every sample.
+    def filter_long_targets(example):
+        target = format_targets({"changes_diff": [example["changes_diff"]]})[0]
+        # Rough estimate: 1 word ~= 1.3 tokens. Use a safe margin.
+        return len(tokenizer.encode(target)) <= args.max_target_length
+
+    print(f"Original dataset size: {len(dataset)}")
+    dataset = dataset.filter(filter_long_targets)
+    print(f"Filtered dataset size: {len(dataset)}")
+
     dataset_split = dataset.train_test_split(test_size=0.1, seed=42)
     
     tokenized_train = dataset_split['train'].map(
@@ -158,6 +170,7 @@ def main():
         report_to='tensorboard',
         fp16=use_fp16,
         optim="adafactor",
+        label_smoothing_factor=0.1, # Prevent overconfidence
         dataloader_num_workers=2
     )
  
