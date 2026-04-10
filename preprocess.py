@@ -18,10 +18,10 @@ CHANGELOG_TEMPLATE = (
 )
 template = Template(CHANGELOG_TEMPLATE)
 
-def preprocess_function(data, tokenizer):
+def preprocess_function(data, tokenizer, max_length=512):
     """
     Format the changelog for T5 input using Jinja2.
-    Ensures the output doesn't exceed MAX_LENGTH after tokenization.
+    Ensures the output doesn't exceed max_length after tokenization.
     Fields 'package', 'version', 'added_files', 'removed_files' stay intact.
     Others ('archive_changelog', 'github_release_notes', 'spec_diff') are truncated if necessary.
     """
@@ -55,18 +55,18 @@ def preprocess_function(data, tokenizer):
         # Using a very large value for L effectively means no truncation here
         # But for robustness, we use a reasonable upper bound
         full_text = get_rendered_text(2**31) # Effectively infinity
-        if len(tokenizer.encode(full_text)) <= MAX_LENGTH:
+        if len(tokenizer.encode(full_text)) <= max_length:
             results.append(full_text)
             continue
             
         # Binary search for the optimal truncation length L for optional fields
-        low, high = 0, MAX_LENGTH
+        low, high = 0, max_length
         best_text = get_rendered_text(0)
         
         while low <= high:
             mid = (low + high) // 2
             current_text = get_rendered_text(mid)
-            if len(tokenizer.encode(current_text)) <= MAX_LENGTH:
+            if len(tokenizer.encode(current_text)) <= max_length:
                 best_text = current_text
                 low = mid + 1
             else:

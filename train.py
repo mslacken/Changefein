@@ -14,10 +14,10 @@ from preprocess import preprocess_target_function as format_targets
 
 # Default Configuration
 DEFAULT_MODEL_ID = 'google-t5/t5-small'
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 NUM_PROCS = 4
-EPOCHS = 3
-MAX_INPUT_LENGTH = 1024
+EPOCHS = 10
+MAX_INPUT_LENGTH = 512
 MAX_TARGET_LENGTH = 512
 
 def parse_args():
@@ -80,7 +80,7 @@ def main():
         Tokenize the formatted inputs and the formatted targets.
         """
         # format_inputs returns a list of formatted strings for the model input
-        inputs = format_inputs(examples, tokenizer)
+        inputs = format_inputs(examples, tokenizer, max_length=MAX_INPUT_LENGTH)
         
         # Tokenize inputs
         model_inputs = tokenizer(
@@ -147,23 +147,25 @@ def main():
     print(f"Moving model to device: {device}")
     model.to(device)
 
+    # Set TensorBoard logging directory to avoid deprecation warning
+    os.environ["TENSORBOARD_LOGGING_DIR"] = os.path.join(out_dir, 'logs')
+
     # Training arguments
     training_args = TrainingArguments(
         output_dir=out_dir,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
-        warmup_steps=500,
+        warmup_ratio=0.1,
         weight_decay=0.01,
-        logging_dir=os.path.join(out_dir, 'logs'),
-        logging_steps=50,
+        logging_steps=10,
         eval_strategy='steps',
-        save_steps=1000,
-        eval_steps=1000,
+        save_steps=100,
+        eval_steps=100,
         load_best_model_at_end=True,
         save_total_limit=2,
-        report_to='none',
-        learning_rate=1e-5,
+        report_to='tensorboard',
+        learning_rate=1e-4,
         fp16=False,
         dataloader_num_workers=2
     )
