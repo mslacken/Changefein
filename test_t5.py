@@ -115,18 +115,30 @@ def main():
             output = model.generate(
                 inputs.input_ids, 
                 max_new_tokens=512,
-                repetition_penalty=2.5,     # Discourage repetition
+                repetition_penalty=1.2,     # Lower penalty to avoid sentinel tokens
                 no_repeat_ngram_size=3,     # Prevent 3-word repeating phrases
                 early_stopping=True         # Stop at EOS
             )
         
         # Decode output
         # To keep the newlines (which are special tokens), we decode without skipping special tokens
-        # and then manually remove the standard T5 special tokens.
+        # and then manually remove the standard T5 special tokens and sentinel tokens.
         decoded_output = tokenizer.decode(output[0], skip_special_tokens=False)
-        for sp_token in [tokenizer.pad_token, tokenizer.eos_token, tokenizer.unk_token]:
+        
+        # Standard special tokens to remove
+        special_to_remove = [
+            tokenizer.pad_token, 
+            tokenizer.eos_token, 
+            tokenizer.unk_token,
+            "<pad>", "</s>", "<unk>"
+        ]
+        for sp_token in special_to_remove:
             if sp_token:
                 decoded_output = decoded_output.replace(sp_token, "")
+        
+        # Remove sentinel tokens (extra_id_XX)
+        import re
+        decoded_output = re.sub(r"<extra_id_\d+>", "", decoded_output)
         
         generated_tokens = tokenizer.encode(decoded_output)
         
