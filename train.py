@@ -18,7 +18,7 @@ DEFAULT_MODEL_ID = 'google-t5/t5-small'
 BATCH_SIZE = 4
 GRADIENT_ACCUMULATION_STEPS = 4 # Effective batch size = BATCH_SIZE * GRAD_ACC
 NUM_PROCS = 4
-EPOCHS = 50
+EPOCHS = 10
 MAX_INPUT_LENGTH = 1024
 MAX_TARGET_LENGTH = 512
 
@@ -106,7 +106,7 @@ def main():
             inputs,
             max_length=args.max_input_length,
             truncation=True,
-            padding='max_length',
+            padding='longest',
             add_special_tokens=True
         )
         targets = format_targets(examples)
@@ -114,7 +114,7 @@ def main():
             text_target=targets,
             max_length=args.max_target_length,
             truncation=True,
-            padding='max_length',
+            padding='longest',
             add_special_tokens=True
         )
         model_inputs["labels"] = [
@@ -163,14 +163,14 @@ def main():
         lr_scheduler_type='cosine',
         logging_steps=10,
         eval_strategy='steps',
-        save_steps=100,
-        eval_steps=100,
+        save_steps=500,
+        eval_steps=500,
         load_best_model_at_end=True,
         save_total_limit=2,
         report_to='tensorboard',
         fp16=use_fp16,
         optim="adafactor",
-        label_smoothing_factor=0.1, # Prevent overconfidence
+        label_smoothing_factor=0.0,
         dataloader_num_workers=2
     )
  
@@ -181,7 +181,7 @@ def main():
         eval_dataset=tokenized_valid,
         data_collator=DataCollatorForSeq2Seq(tokenizer, model=model),
         processing_class=tokenizer,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=10)] # More patience for large models
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)]
     )
 
     print("Starting training...")
